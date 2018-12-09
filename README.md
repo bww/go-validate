@@ -2,13 +2,19 @@
 Go Validate allows you to valdiate struct fields by defining an expression in the field's tag that evaluates to `true` when the field is valid.
 
 ```go
-type Example struct {
+type First struct {
+  A int             `check:"self >= 0"`
+  B string          `check:"str.Alpha(self)"`
+}
+
+type Second struct {
   A string          `check:"len(self) > 0 "`
   B int             `check:"self != 0"`
   C map[string]int  `check:"self != nil && self.some_key > 100"
+  D *First          `check:"self != nil && check(self)"`
 }
 
-func test(e Example) {
+func example(e Second) {
   validator := validate.New()
   errs := validator.Validate(e)
   if len(errs) > 0 {
@@ -21,7 +27,7 @@ func test(e Example) {
 
 * **Expressiveness and flexibility**, arbitrarily complex expressions may be used to define validity of fields, 
 * **Strong locality**, the validity of a field is described near the definition of the field, 
-* **Terseness and readabilitiy**, validity is not described by a syntax that is fundamentally dissimilar from Go.
+* **Terseness and readabilitiy**, validity is not described by a syntax that is [fundamentally dissimilar from Go](https://godoc.org/gopkg.in/go-playground/validator.v9).
 
 
 ## EPL

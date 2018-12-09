@@ -26,7 +26,7 @@ func example(e Second) {
 ## Project Goals
 
 * **Expressiveness and flexibility**, arbitrarily complex expressions may be used to define validity of fields, 
-* **Strong locality**, the validity of a field is described near the definition of the field, 
+* **Strong locality**, the requirements of a field are described near the definition of the field, 
 * **Terseness and readabilitiy**, validity is not described by a syntax that is [fundamentally dissimilar from Go](https://godoc.org/gopkg.in/go-playground/validator.v9).
 
 

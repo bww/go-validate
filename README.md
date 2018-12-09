@@ -5,7 +5,7 @@ Go Validate allows you to valdiate struct fields by defining an expression in th
 type Example struct {
   A string          `check:"len(self) > 0 "`
   B int             `check:"self != 0"`
-  C map[string]int  `check:"self != nil && self["some_key"] > 100"
+  C map[string]int  `check:"self != nil && self.some_key > 100"
 }
 
 func test(e Example) {

@@ -10,7 +10,7 @@ type First struct {
 type Second struct {
   A string          `check:"len(self) > 0 "` // A must have a length greather than zero
   B int             `check:"self != 0"` // B must not be the value zero
-  C map[string]int  `check:"self != nil && self.some_key > 100" // C must have a key 'some_key' whose value is greater than 100
+  C map[string]int  `check:"self != nil && self.some_key > 100"` // C must have a key 'some_key' whose value is greater than 100
   D *First          `check:"self != nil && check(self)"` // D must not be nil and must itself be valid
 }
 

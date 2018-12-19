@@ -3,15 +3,15 @@ Go Validate allows you to valdiate struct fields by defining an expression in th
 
 ```go
 type First struct {
-  A int             `check:"self >= 0"`
-  B string          `check:"str.Alpha(self)"`
+  A int             `check:"self >= 0"` // A must be greater than zero
+  B string          `check:"str.Alpha(self)"` // B must be alphanumeric (or empty)
 }
 
 type Second struct {
-  A string          `check:"len(self) > 0 "`
-  B int             `check:"self != 0"`
-  C map[string]int  `check:"self != nil && self.some_key > 100"
-  D *First          `check:"self != nil && check(self)"`
+  A string          `check:"len(self) > 0 "` // A must have a length greather than zero
+  B int             `check:"self != 0"` // B must not be the value zero
+  C map[string]int  `check:"self != nil && self.some_key > 100" // C must have a key 'some_key' whose value is greater than 100
+  D *First          `check:"self != nil && check(self)"` // D must not be nil and must itself be valid
 }
 
 func example(e Second) {

@@ -1,9 +1,11 @@
 package validate
 
 import (
-	"github.com/stretchr/testify/assert"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testA struct {
@@ -50,48 +52,57 @@ type testI struct {
 	F4 string `json:"i_4" check:"len(self) > 0 && str.Numeric(self)"`
 }
 
+type testJ struct {
+	F1 string `json:"j_1" check:"len(self) > 0" err:"F1 must not be empty"`
+	F2 int    `json:"j_2" check:"self > 0"  err:"F2 must not be zero, gotta be bigger"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
-	checkValid(t, v, testA{}, []string{"a_1"})
-	checkValid(t, v, testA{"A"}, nil)
+	checkValid(t, v, testA{}, []string{"a_1"}, nil)
+	checkValid(t, v, testA{"A"}, nil, nil)
 
-	checkValid(t, v, testB{}, []string{"b_1"})
-	checkValid(t, v, testB{&testA{}}, []string{"b_1.a_1", "b_1"})
-	checkValid(t, v, testB{&testA{"A"}}, nil)
+	checkValid(t, v, testB{}, []string{"b_1"}, nil)
+	checkValid(t, v, testB{&testA{}}, []string{"b_1.a_1", "b_1"}, nil)
+	checkValid(t, v, testB{&testA{"A"}}, nil, nil)
 
-	checkValid(t, v, testC{0, 0, 0, 0, 1}, []string{"c_1", "c_4", "c_5"})
-	checkValid(t, v, testC{1, -1, 0, 1, 1}, nil)
+	checkValid(t, v, testC{0, 0, 0, 0, 1}, []string{"c_1", "c_4", "c_5"}, nil)
+	checkValid(t, v, testC{1, -1, 0, 1, 1}, nil, nil)
 
-	checkValid(t, v, testD{}, []string{"d_1"})
-	checkValid(t, v, testD{true}, nil)
+	checkValid(t, v, testD{}, []string{"d_1"}, nil)
+	checkValid(t, v, testD{true}, nil, nil)
 
-	checkValid(t, v, testE{}, []string{"e_1"})
-	checkValid(t, v, testE{[]int{1, 2}}, nil)
+	checkValid(t, v, testE{}, []string{"e_1"}, nil)
+	checkValid(t, v, testE{[]int{1, 2}}, nil, nil)
 
-	checkValid(t, v, testF{}, []string{"f_1"})
-	checkValid(t, v, testF{[]testA{{}}}, []string{"f_1[0].a_1", "f_1"})
-	checkValid(t, v, testF{[]testA{{"A"}}}, nil)
+	checkValid(t, v, testF{}, []string{"f_1"}, nil)
+	checkValid(t, v, testF{[]testA{{}}}, []string{"f_1[0].a_1", "f_1"}, nil)
+	checkValid(t, v, testF{[]testA{{"A"}}}, nil, nil)
 
-	checkValid(t, v, testG{}, []string{"g_1", "g_2"})
-	checkValid(t, v, testG{time.Now(), time.Time{}}, []string{"g_2"})
-	checkValid(t, v, testG{time.Now(), time.Now().Add(time.Minute)}, nil)
+	checkValid(t, v, testG{}, []string{"g_1", "g_2"}, nil)
+	checkValid(t, v, testG{time.Now(), time.Time{}}, []string{"g_2"}, nil)
+	checkValid(t, v, testG{time.Now(), time.Now().Add(time.Minute)}, nil, nil)
 
-	checkValid(t, v, testH{}, []string{"h_1"})
-	checkValid(t, v, testH{&testB{}}, []string{"h_1.b_1", "h_1"})
-	checkValid(t, v, testH{&testB{&testA{}}}, []string{"h_1.b_1.a_1", "h_1.b_1", "h_1"})
-	checkValid(t, v, testH{&testB{&testA{"A"}}}, nil)
+	checkValid(t, v, testH{}, []string{"h_1"}, nil)
+	checkValid(t, v, testH{&testB{}}, []string{"h_1.b_1", "h_1"}, nil)
+	checkValid(t, v, testH{&testB{&testA{}}}, []string{"h_1.b_1.a_1", "h_1.b_1", "h_1"}, nil)
+	checkValid(t, v, testH{&testB{&testA{"A"}}}, nil, nil)
 
-	checkValid(t, v, testI{}, []string{"i_2", "i_3", "i_4"})
-	checkValid(t, v, testI{"", "Abc", "123Abc", "987"}, nil)
+	checkValid(t, v, testI{}, []string{"i_2", "i_3", "i_4"}, nil)
+	checkValid(t, v, testI{"", "Abc", "123Abc", "987"}, nil, nil)
 
+	checkValid(t, v, testJ{}, []string{"j_1", "j_2"}, []string{"F1 must not be empty", "F2 must not be zero, gotta be bigger"})
 }
 
-func checkValid(t *testing.T, v Validator, e interface{}, expect []string) {
+func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {
 	actual := v.Validate(e)
 	if len(expect) == 0 {
 		assert.Len(t, actual, 0)
-	} else {
-		assert.Equal(t, expect, actual.Fields(), actual.Error())
+	} else if assert.Equal(t, expect, actual.Fields(), actual.Error()) {
+		fmt.Println("*** ", actual.Messages())
+		if errmsg != nil {
+			assert.Equal(t, errmsg, actual.Messages(), actual.Error())
+		}
 	}
 }

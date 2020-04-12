@@ -5,9 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
-)
 
-import (
 	"github.com/bww/epl/v1"
 	"github.com/bww/go-validate/v1/stdlib"
 )
@@ -16,40 +14,12 @@ var (
 	ErrUnsupportedType = fmt.Errorf("Unsupported type (use a struct)")
 )
 
-type FieldError struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
+type errorBuffer struct {
+	E []error
 }
 
-func FieldErrorf(f, m string, a ...interface{}) *FieldError {
-	return &FieldError{f, fmt.Sprintf(m, a...)}
-}
-
-func (e FieldError) Error() string {
-	return fmt.Sprintf("%v: %v", e.Field, e.Message)
-}
-
-type Errors []error
-
-func (e Errors) Fields() []string {
-	fields := make([]string, 0)
-	for _, v := range e {
-		switch c := v.(type) {
-		case FieldError:
-			fields = append(fields, c.Field)
-		case *FieldError:
-			fields = append(fields, c.Field)
-		}
-	}
-	return fields
-}
-
-func (e Errors) Error() string {
-	s := fmt.Sprintf("%d field errors", len(e))
-	for _, x := range e {
-		s += "\n  - " + x.Error()
-	}
-	return s
+func (e *errorBuffer) Add(v ...error) {
+	e.E = append(e.E, v...)
 }
 
 func keyPath(b, f string) string {
@@ -60,24 +30,16 @@ func keyPath(b, f string) string {
 	}
 }
 
-type errorBuffer struct {
-	E []error
-}
-
-func (e *errorBuffer) Add(v ...error) {
-	e.E = append(e.E, v...)
-}
-
 type Validator struct {
-	checkTag, nameTag string
+	checkTag, errTag, nameTag string
 }
 
 func New() Validator {
-	return NewWithTags("check", "json")
+	return NewWithTags("check", "err", "json")
 }
 
-func NewWithTags(check, name string) Validator {
-	return Validator{check, name}
+func NewWithTags(check, err, name string) Validator {
+	return Validator{check, err, name}
 }
 
 func (v Validator) Validate(s interface{}) Errors {
@@ -127,6 +89,7 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 			path = keyPath(p, field.Name)
 		}
 
+		msg := field.Tag.Get(v.errTag)
 		src := field.Tag.Get(v.checkTag)
 		if src != "" {
 			expr, err := epl.Compile(src)
@@ -171,7 +134,11 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 					errs.Add(c...)
 				case bool:
 					if !c {
-						errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", src))
+						if msg != "" {
+							errs.Add(FieldError{path, msg})
+						} else {
+							errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", src))
+						}
 						valid = false
 					}
 				default:

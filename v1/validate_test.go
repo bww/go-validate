@@ -53,8 +53,8 @@ type testI struct {
 }
 
 type testJ struct {
-	F1 string `json:"j_1" check:"len(self) > 0" err:"F1 must not be empty"`
-	F2 int    `json:"j_2" check:"self > 0"  err:"F2 must not be zero, gotta be bigger"`
+	F1 string `json:"j_1" check:"len(self) > 0" invalid:"F1 must not be empty"`
+	F2 int    `json:"j_2" check:"self > 0"  invalid:"F2 must not be zero, gotta be bigger"`
 }
 
 func TestValidate(t *testing.T) {

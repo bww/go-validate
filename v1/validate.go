@@ -35,7 +35,7 @@ type Validator struct {
 }
 
 func New() Validator {
-	return NewWithTags("check", "err", "json")
+	return NewWithTags("check", "invalid", "json")
 }
 
 func NewWithTags(check, err, name string) Validator {

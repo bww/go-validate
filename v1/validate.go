@@ -8,8 +8,8 @@ import (
 )
 
 import (
-	"github.com/bww/epl"
-	"github.com/bww/go-validate/stdlib"
+	"github.com/bww/epl/v1"
+	"github.com/bww/go-validate/v1/stdlib"
 )
 
 var (

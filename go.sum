@@ -1,5 +1,7 @@
 github.com/bww/epl v0.0.0-20190416152753-b1c8662fdd65 h1:wkeL+8byOqV0+7HqYiYRi+6Ns/0XZ4i1hZn5FThWjc0=
 github.com/bww/epl v0.0.0-20190416152753-b1c8662fdd65/go.mod h1:8CahovY2O3KqBUPSfiQzaSaNd6Bkn+SJH7L98/76vaI=
+github.com/bww/epl v1.0.0 h1:ND38rp+wL7VjbPx39vTOqTNzCBmCgw2eCZe1+l5Hiu8=
+github.com/bww/epl v1.0.0/go.mod h1:8CahovY2O3KqBUPSfiQzaSaNd6Bkn+SJH7L98/76vaI=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

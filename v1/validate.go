@@ -30,6 +30,10 @@ func keyPath(b, f string) string {
 	}
 }
 
+type Introspector interface {
+	Validate() error
+}
+
 type Validator struct {
 	checkTag, errTag, nameTag string
 }
@@ -49,6 +53,13 @@ func (v Validator) Validate(s interface{}) Errors {
 }
 
 func (v Validator) validate(p string, s interface{}, errs *errorBuffer) bool {
+	if c, ok := s.(Introspector); ok {
+		if err := c.Validate(); err != nil {
+			errs.Add(FieldErrorf(coalesce(p, "<entity>"), err.Error()))
+			return false
+		}
+		return true
+	}
 	z := reflect.Indirect(reflect.ValueOf(s))
 	switch z.Kind() {
 	case reflect.Invalid:
@@ -89,9 +100,17 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 			path = keyPath(p, field.Name)
 		}
 
-		msg := field.Tag.Get(v.errTag)
-		src := field.Tag.Get(v.checkTag)
-		if src != "" {
+		msg := strings.TrimSpace(field.Tag.Get(v.errTag))
+		src := strings.TrimSpace(field.Tag.Get(v.checkTag))
+		if src == "" || src == "-" {
+			continue
+		}
+
+		val := z.Field(i).Interface()
+		switch src {
+		case "check":
+			valid = v.validate(path, val, errs) && valid
+		default:
 			expr, err := epl.Compile(src)
 			if err != nil {
 				errs.Add(FieldErrorf(path, "Could not compile expression: %v", err))
@@ -102,12 +121,9 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 			check := func(s interface{}) bool {
 				return v.validate(path, s, errs)
 			}
-
 			date := func(y, m, d float64) time.Time {
 				return time.Date(int(y), time.Month(m), int(d), 0, 0, 0, 0, time.UTC)
 			}
-
-			val := z.Field(i).Interface()
 			cxt := map[string]interface{}{
 				"self":  val,
 				"sup":   z.Interface(),
@@ -160,8 +176,17 @@ func (v Validator) len(s interface{}) int {
 	case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
 		return z.Len()
 	default:
-		panic(fmt.Errorf("Unsupported type: %T", s))
+		panic(fmt.Errorf("Type does not have a length: %T", s))
 	}
+}
+
+func coalesce(t ...string) string {
+	for _, e := range t {
+		if e != "" {
+			return e
+		}
+	}
+	return ""
 }
 
 func fieldName(t string) string {

@@ -57,6 +57,21 @@ type testJ struct {
 	F2 int    `json:"j_2" check:"self > 0"  invalid:"F2 must not be zero, gotta be bigger"`
 }
 
+type fieldA string
+
+func (f fieldA) Validate() error {
+	l := len(f)
+	if l < 1 || l > 10 {
+		return fmt.Errorf("Must be between 1-10 bytes")
+	}
+	return nil
+}
+
+type testK struct {
+	F1 fieldA `json:"k_1" check:"check "` // must be 1-10 bytes, inclusive
+	F2 string `json:"k_2" check:"len(self) == 0"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -93,6 +108,10 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testI{"", "Abc", "123Abc", "987"}, nil, nil)
 
 	checkValid(t, v, testJ{}, []string{"j_1", "j_2"}, []string{"F1 must not be empty", "F2 must not be zero, gotta be bigger"})
+
+	checkValid(t, v, testK{}, []string{"k_1"}, []string{"Must be between 1-10 bytes"})
+	checkValid(t, v, testK{F1: "This is too long. Way too long. Fix it."}, []string{"k_1"}, []string{"Must be between 1-10 bytes"})
+	checkValid(t, v, testK{F1: "A"}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

@@ -72,6 +72,10 @@ type testK struct {
 	F2 string `json:"k_2" check:"len(self) == 0"`
 }
 
+type testL struct {
+	F1 string `json:"l_1" check:"len(self) == 0 || str.Match(\"#[0-9a-f]{6}\", self)" invalid:"Pattern doesn't match"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -112,6 +116,11 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testK{}, []string{"k_1"}, []string{"Must be between 1-10 bytes"})
 	checkValid(t, v, testK{F1: "This is too long. Way too long. Fix it."}, []string{"k_1"}, []string{"Must be between 1-10 bytes"})
 	checkValid(t, v, testK{F1: "A"}, nil, nil)
+
+	checkValid(t, v, testL{}, nil, nil)
+	checkValid(t, v, testL{F1: "#ff0033"}, nil, nil)
+	checkValid(t, v, testL{F1: "#ff003"}, []string{"l_1"}, []string{"Pattern doesn't match"})
+	checkValid(t, v, testL{F1: "_ff0033"}, []string{"l_1"}, []string{"Pattern doesn't match"})
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

@@ -1,6 +1,8 @@
 package stdlib
 
 import (
+	"fmt"
+	"regexp"
 	"unicode"
 )
 
@@ -27,4 +29,12 @@ func (v Strings) AlphaNumeric(s string) bool {
 	return checkString(s, func(r rune) bool {
 		return unicode.IsLetter(r) || unicode.IsNumber(r)
 	})
+}
+
+func (v Strings) Match(p, s string) bool {
+	m, err := regexp.Match(p, []byte(s))
+	if err != nil {
+		panic(fmt.Errorf("Invalid pattern: %s", p))
+	}
+	return m
 }

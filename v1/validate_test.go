@@ -76,6 +76,10 @@ type testL struct {
 	F1 string `json:"l_1" check:"len(self) == 0 || str.Match(\"#[0-9a-f]{6}\", self)" invalid:"Pattern doesn't match"`
 }
 
+type testM struct {
+	F1 *time.Time `json:"m_1" check:"self == nil || deref(self).Before(now())" invalid:"Time is invalid"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -121,6 +125,12 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testL{F1: "#ff0033"}, nil, nil)
 	checkValid(t, v, testL{F1: "#ff003"}, []string{"l_1"}, []string{"Pattern doesn't match"})
 	checkValid(t, v, testL{F1: "_ff0033"}, []string{"l_1"}, []string{"Pattern doesn't match"})
+
+	now := time.Now()
+	before, after := now.Add(-time.Minute), now.Add(time.Minute)
+	checkValid(t, v, testM{}, nil, nil)
+	checkValid(t, v, testM{&before}, nil, nil)
+	checkValid(t, v, testM{&after}, []string{"m_1"}, []string{"Time is invalid"})
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

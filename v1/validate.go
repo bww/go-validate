@@ -131,6 +131,7 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 				"now":   time.Now,
 				"date":  date,
 				"check": check,
+				"deref": stdlib.Indirect,
 				"str":   stdlib.Strings{},
 			}
 

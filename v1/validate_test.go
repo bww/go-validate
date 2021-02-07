@@ -76,6 +76,26 @@ type testL struct {
 	F1 string `json:"l_1" check:"len(self) == 0 || str.Match(\"#[0-9a-f]{6}\", self)" invalid:"Pattern doesn't match"`
 }
 
+type testM struct {
+	F1 string `json:"m_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testM) Validate() error { return nil } //v1
+
+type testN struct {
+	F1 string `json:"n_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testN) Validate() (error, bool) { return nil, true } //v2
+
+type testO struct {
+	F1 string `json:"o_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testO) Validate() (error, bool) { // v2
+	return FieldErrorf("synthetic", "This is the problem"), true
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -121,6 +141,13 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testL{F1: "#ff0033"}, nil, nil)
 	checkValid(t, v, testL{F1: "#ff003"}, []string{"l_1"}, []string{"Pattern doesn't match"})
 	checkValid(t, v, testL{F1: "_ff0033"}, []string{"l_1"}, []string{"Pattern doesn't match"})
+
+	// v1 doesn't support fields checks
+	checkValid(t, v, testM{F1: "111"}, nil, nil)
+	checkValid(t, v, testM{F1: "1"}, nil, nil)
+	// v2 does
+	checkValid(t, v, testN{F1: "111"}, nil, nil)
+	checkValid(t, v, testN{F1: "1"}, []string{"n_1"}, []string{"Wrong length"})
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

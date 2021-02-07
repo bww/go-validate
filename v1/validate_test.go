@@ -80,19 +80,19 @@ type testM struct {
 	F1 string `json:"m_1" check:"len(self) == 3" invalid:"Wrong length"`
 }
 
-func (v testM) Validate() error { return nil } //v1
+func (s testM) Validate() error { return nil } //v1
 
 type testN struct {
 	F1 string `json:"n_1" check:"len(self) == 3" invalid:"Wrong length"`
 }
 
-func (v testN) Validate() (error, bool) { return nil, true } //v2
+func (s testN) Validate(v Validator) (error, bool) { return nil, true } //v2
 
 type testO struct {
 	F1 string `json:"o_1" check:"len(self) == 3" invalid:"Wrong length"`
 }
 
-func (v testO) Validate() (error, bool) { // v2
+func (s testO) Validate(v Validator) (error, bool) { // v2
 	return FieldErrorf("syn", "This is the problem"), true
 }
 

@@ -35,7 +35,7 @@ type IntrospectorV1 interface {
 	Validate() error
 }
 type IntrospectorV2 interface {
-	Validate() (error, bool)
+	Validate(Validator) (error, bool)
 }
 
 type Validator struct {
@@ -88,7 +88,7 @@ func (v Validator) validateIntrospectorV1(p string, s interface{}, z Introspecto
 }
 
 func (v Validator) validateIntrospectorV2(p string, s interface{}, z IntrospectorV2, errs *errorBuffer) bool {
-	err, cont := z.Validate()
+	err, cont := z.Validate(v)
 	if err != nil {
 		errs.Add(fieldErrors(p, err)...)
 	}

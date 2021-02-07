@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -30,20 +31,35 @@ func keyPath(b, f string) string {
 	}
 }
 
-type Introspector interface {
+type IntrospectorV1 interface {
 	Validate() error
+}
+type IntrospectorV2 interface {
+	Validate() (error, bool)
 }
 
 type Validator struct {
 	checkTag, errTag, nameTag string
 }
 
-func New() Validator {
-	return NewWithTags("check", "invalid", "json")
+func New(opts ...Option) Validator {
+	conf := Config{
+		CheckTag: "check",
+		ErrorTag: "invalid",
+		FieldTag: "json",
+	}
+	for _, opt := range opts {
+		conf = opt(conf)
+	}
+	return NewWithConfig(conf)
 }
 
-func NewWithTags(check, err, name string) Validator {
-	return Validator{check, err, name}
+func NewWithConfig(conf Config) Validator {
+	return Validator{
+		checkTag: conf.CheckTag,
+		errTag:   conf.ErrorTag,
+		nameTag:  conf.FieldTag,
+	}
 }
 
 func (v Validator) Validate(s interface{}) Errors {
@@ -53,15 +69,38 @@ func (v Validator) Validate(s interface{}) Errors {
 }
 
 func (v Validator) validate(p string, s interface{}, errs *errorBuffer) bool {
-	if c, ok := s.(Introspector); ok {
-		if err := c.Validate(); err != nil {
-			errs.Add(FieldErrorf(coalesce(p, "<entity>"), err.Error()))
-			return false
-		}
+	switch z := s.(type) {
+	case IntrospectorV2: // prefer v2
+		return v.validateIntrospectorV2(p, s, z, errs)
+	case IntrospectorV1:
+		return v.validateIntrospectorV1(p, s, z, errs)
+	default:
+		return v.validateFields(p, s, errs)
+	}
+}
+
+func (v Validator) validateIntrospectorV1(p string, s interface{}, z IntrospectorV1, errs *errorBuffer) bool {
+	if err := z.Validate(); err != nil {
+		errs.Add(fieldErrors(p, err)...)
+		return false
+	}
+	return true
+}
+
+func (v Validator) validateIntrospectorV2(p string, s interface{}, z IntrospectorV2, errs *errorBuffer) bool {
+	err, cont := z.Validate()
+	if err != nil {
+		errs.Add(fieldErrors(p, err)...)
+	}
+	if cont {
+		return v.validateFields(p, s, errs)
+	} else {
 		return true
 	}
-	z := reflect.Indirect(reflect.ValueOf(s))
-	switch z.Kind() {
+}
+
+func (v Validator) validateFields(p string, s interface{}, errs *errorBuffer) bool {
+	switch z := reflect.Indirect(reflect.ValueOf(s)); z.Kind() {
 	case reflect.Invalid:
 		return true
 	case reflect.Struct:
@@ -101,7 +140,7 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 		}
 
 		msg := strings.TrimSpace(field.Tag.Get(v.errTag))
-		src := strings.TrimSpace(field.Tag.Get(v.checkTag))
+		src := strings.TrimSpace(getTag(field.Tag, v.checkTag))
 		if src == "" || src == "-" {
 			continue
 		}
@@ -177,6 +216,20 @@ func (v Validator) len(s interface{}) int {
 		return z.Len()
 	default:
 		panic(fmt.Errorf("Type does not have a length: %T", s))
+	}
+}
+
+func fieldErrors(p string, err error) []error {
+	var suberrs Errors
+	if errors.As(err, &suberrs) {
+		return suberrs
+	}
+	var fielderr *FieldError
+	if errors.As(err, &fielderr) {
+		return []error{fielderr}
+	}
+	return []error{
+		FieldErrorf(coalesce(p, "<entity>"), err.Error()),
 	}
 }
 

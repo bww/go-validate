@@ -76,6 +76,26 @@ type testL struct {
 	F1 string `json:"l_1" check:"len(self) == 0 || str.Match(\"#[0-9a-f]{6}\", self)" invalid:"Pattern doesn't match"`
 }
 
+type testM struct {
+	F1 string `json:"m_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testM) Validate() error { return nil } //v1
+
+type testN struct {
+	F1 string `json:"n_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testN) Validate() (error, bool) { return nil, true } //v2
+
+type testO struct {
+	F1 string `json:"o_1" check:"len(self) == 3" invalid:"Wrong length"`
+}
+
+func (v testO) Validate() (error, bool) { // v2
+	return FieldErrorf("syn", "This is the problem"), true
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -121,6 +141,16 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testL{F1: "#ff0033"}, nil, nil)
 	checkValid(t, v, testL{F1: "#ff003"}, []string{"l_1"}, []string{"Pattern doesn't match"})
 	checkValid(t, v, testL{F1: "_ff0033"}, []string{"l_1"}, []string{"Pattern doesn't match"})
+
+	// v1 doesn't support fields checks
+	checkValid(t, v, testM{F1: "111"}, nil, nil)
+	checkValid(t, v, testM{F1: "1"}, nil, nil)
+	// v2 does
+	checkValid(t, v, testN{F1: "111"}, nil, nil)
+	checkValid(t, v, testN{F1: "1"}, []string{"n_1"}, []string{"Wrong length"})
+	// v2 supports both
+	checkValid(t, v, testO{F1: "111"}, []string{"syn"}, []string{"This is the problem"})
+	checkValid(t, v, testO{F1: "1"}, []string{"syn", "o_1"}, []string{"This is the problem", "Wrong length"})
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {
@@ -133,4 +163,23 @@ func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errms
 			assert.Equal(t, errmsg, actual.Messages(), actual.Error())
 		}
 	}
+}
+
+type modeA struct {
+	F1 string `json:"a_1" create:"len(self) > 0" invalid:"Wrong length"`
+	F2 string `json:"a_2" create,update:"len(self) > 0" invalid:"Wrong length"`
+	F3 string `json:"a_3"`
+}
+
+func TestMode(t *testing.T) {
+	var errs Errors
+	v1 := modeA{}
+	errs = New(Mode("create")).Validate(v1)
+	assert.Equal(t, []string{"a_1", "a_2"}, errs.Fields())
+	errs = New(Mode("update")).Validate(v1)
+	assert.Equal(t, []string{"a_2"}, errs.Fields())
+	errs = New(Mode("never_heard_of_it")).Validate(v1)
+	assert.Equal(t, []string{}, errs.Fields())
+	errs = New(Mode("create,update")).Validate(v1)
+	assert.Equal(t, []string{}, errs.Fields())
 }

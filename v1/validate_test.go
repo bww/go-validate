@@ -93,7 +93,7 @@ type testO struct {
 }
 
 func (v testO) Validate() (error, bool) { // v2
-	return FieldErrorf("synthetic", "This is the problem"), true
+	return FieldErrorf("syn", "This is the problem"), true
 }
 
 func TestValidate(t *testing.T) {
@@ -148,6 +148,9 @@ func TestValidate(t *testing.T) {
 	// v2 does
 	checkValid(t, v, testN{F1: "111"}, nil, nil)
 	checkValid(t, v, testN{F1: "1"}, []string{"n_1"}, []string{"Wrong length"})
+	// v2 supports both
+	checkValid(t, v, testO{F1: "111"}, []string{"syn"}, []string{"This is the problem"})
+	checkValid(t, v, testO{F1: "1"}, []string{"syn", "o_1"}, []string{"This is the problem", "Wrong length"})
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

@@ -164,3 +164,22 @@ func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errms
 		}
 	}
 }
+
+type modeA struct {
+	F1 string `json:"a_1" create:"len(self) > 0" invalid:"Wrong length"`
+	F2 string `json:"a_2" create,update:"len(self) > 0" invalid:"Wrong length"`
+	F3 string `json:"a_3"`
+}
+
+func TestMode(t *testing.T) {
+	var errs Errors
+	v1 := modeA{}
+	errs = New(Mode("create")).Validate(v1)
+	assert.Equal(t, []string{"a_1", "a_2"}, errs.Fields())
+	errs = New(Mode("update")).Validate(v1)
+	assert.Equal(t, []string{"a_2"}, errs.Fields())
+	errs = New(Mode("never_heard_of_it")).Validate(v1)
+	assert.Equal(t, []string{}, errs.Fields())
+	errs = New(Mode("create,update")).Validate(v1)
+	assert.Equal(t, []string{}, errs.Fields())
+}

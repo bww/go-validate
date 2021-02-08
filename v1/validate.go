@@ -75,7 +75,7 @@ func (v Validator) validate(p string, s interface{}, errs *errorBuffer) bool {
 	case IntrospectorV1:
 		return v.validateIntrospectorV1(p, s, z, errs)
 	default:
-		return v.validateFields(p, s, errs)
+		return v.validateFields(p, reflect.Indirect(reflect.ValueOf(s)), errs)
 	}
 }
 
@@ -93,14 +93,14 @@ func (v Validator) validateIntrospectorV2(p string, s interface{}, z Introspecto
 		errs.Add(fieldErrors(p, err)...)
 	}
 	if cont {
-		return v.validateFields(p, s, errs)
+		return v.validateFields(p, reflect.Indirect(reflect.ValueOf(s)), errs)
 	} else {
 		return true
 	}
 }
 
-func (v Validator) validateFields(p string, s interface{}, errs *errorBuffer) bool {
-	switch z := reflect.Indirect(reflect.ValueOf(s)); z.Kind() {
+func (v Validator) validateFields(p string, z reflect.Value, errs *errorBuffer) bool {
+	switch z.Kind() {
 	case reflect.Invalid:
 		return true
 	case reflect.Struct:
@@ -141,11 +141,25 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 
 		msg := strings.TrimSpace(field.Tag.Get(v.errTag))
 		src := strings.TrimSpace(getTag(field.Tag, v.checkTag))
-		if src == "" || src == "-" {
+		if src == "-" {
+			continue
+		} else if src == "" && !field.Anonymous {
 			continue
 		}
 
-		val := z.Field(i).Interface()
+		// recurse to embedded fields unless they are explicitly skipped via
+		// the check above: embed:"" or embed:"-"
+		if field.Anonymous {
+			v.validateFields(p, z.Field(i), errs)
+			continue
+		}
+
+		var val interface{}
+		if x := z.Field(i); x.CanInterface() {
+			val = x.Interface()
+		} else {
+			panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", p, field))
+		}
 		switch src {
 		case "check":
 			valid = v.validate(path, val, errs) && valid
@@ -165,12 +179,14 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 			}
 			cxt := map[string]interface{}{
 				"self":  val,
-				"sup":   z.Interface(),
 				"len":   v.len,
 				"now":   time.Now,
 				"date":  date,
 				"check": check,
 				"str":   stdlib.Strings{},
+			}
+			if z.CanInterface() {
+				cxt["sup"] = z.Interface()
 			}
 
 			res, err := expr.Exec(cxt)

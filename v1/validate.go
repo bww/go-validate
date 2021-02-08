@@ -14,8 +14,6 @@ import (
 	"github.com/hashicorp/golang-lru"
 )
 
-var ErrUnsupportedType = fmt.Errorf("Unsupported type (use a struct)")
-
 var cache *lru.Cache
 
 func init() {
@@ -62,6 +60,11 @@ type IntrospectorV2 interface {
 	Validate(Validator) (error, bool)
 }
 
+var (
+	introspectorV1 = reflect.TypeOf((*IntrospectorV1)(nil)).Elem()
+	introspectorV2 = reflect.TypeOf((*IntrospectorV2)(nil)).Elem()
+)
+
 type Validator struct {
 	checkTag, errTag, nameTag string
 }
@@ -88,69 +91,73 @@ func NewWithConfig(conf Config) Validator {
 
 func (v Validator) Validate(s interface{}) Errors {
 	errs := &errorBuffer{}
-	v.validate("", s, errs)
+	v.validate("", reflect.Indirect(reflect.ValueOf(s)), errs)
 	return errs.E
 }
 
-func (v Validator) validate(p string, s interface{}, errs *errorBuffer) bool {
-	switch z := s.(type) {
-	case IntrospectorV2: // prefer v2
-		return v.validateIntrospectorV2(p, s, z, errs)
-	case IntrospectorV1:
-		return v.validateIntrospectorV1(p, s, z, errs)
+func (v Validator) validate(p string, s reflect.Value, errs *errorBuffer) bool {
+	t := s.Type()
+	switch {
+	case t.Implements(introspectorV2):
+		return v.validateIntrospectorV2(p, s, errs)
+	case t.Implements(introspectorV1):
+		return v.validateIntrospectorV1(p, s, errs)
 	default:
-		return v.validateFields(p, reflect.Indirect(reflect.ValueOf(s)), errs)
+		return v.validateFields(p, s, errs)
 	}
 }
 
-func (v Validator) validateIntrospectorV1(p string, s interface{}, z IntrospectorV1, errs *errorBuffer) bool {
-	if err := z.Validate(); err != nil {
-		errs.Add(fieldErrors(p, err)...)
+func (v Validator) validateIntrospectorV1(p string, s reflect.Value, errs *errorBuffer) bool {
+	r := s.MethodByName("Validate").Call([]reflect.Value{})
+	if !r[0].IsNil() {
+		errs.Add(fieldErrors(p, r[0].Interface().(error))...)
 		return false
 	}
 	return true
 }
 
-func (v Validator) validateIntrospectorV2(p string, s interface{}, z IntrospectorV2, errs *errorBuffer) bool {
-	err, cont := z.Validate(v)
-	if err != nil {
-		errs.Add(fieldErrors(p, err)...)
-	}
-	if cont {
-		return v.validateFields(p, reflect.Indirect(reflect.ValueOf(s)), errs)
+func (v Validator) validateIntrospectorV2(p string, s reflect.Value, errs *errorBuffer) bool {
+	var valid bool
+	r := s.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(v)})
+	if !r[0].IsNil() {
+		errs.Add(fieldErrors(p, r[0].Interface().(error))...)
 	} else {
-		return true
+		valid = true
+	}
+	if r[1].Bool() {
+		return v.validateFields(p, s, errs)
+	} else {
+		return valid
 	}
 }
 
-func (v Validator) validateFields(p string, z reflect.Value, errs *errorBuffer) bool {
-	switch z.Kind() {
+func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) bool {
+	switch s.Kind() {
 	case reflect.Invalid:
 		return true
 	case reflect.Struct:
-		return v.validateStruct(p, z, errs)
+		return v.validateStruct(p, s, errs)
 	case reflect.Slice, reflect.Array:
-		return v.validateSlice(p, z, errs)
+		return v.validateSlice(p, s, errs)
 	default:
-		errs.Add(ErrUnsupportedType)
+		errs.Add(fmt.Errorf("Unsupported type: %v", s))
 	}
 	return false
 }
 
-func (v Validator) validateSlice(p string, z reflect.Value, errs *errorBuffer) bool {
-	l := z.Len()
-	valid := true
+func (v Validator) validateSlice(p string, s reflect.Value, errs *errorBuffer) bool {
+	valid, l := true, s.Len()
 	for i := 0; i < l; i++ {
-		if !v.validate(fmt.Sprintf("%s[%d]", p, i), z.Index(i).Interface(), errs) {
+		if !v.validate(fmt.Sprintf("%s[%d]", p, i), s.Index(i), errs) {
 			valid = false
 		}
 	}
 	return valid
 }
 
-func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) bool {
-	n := z.NumField()
-	t := z.Type()
+func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) bool {
+	n := s.NumField()
+	t := s.Type()
 
 	valid := true
 	for i := 0; i < n; i++ {
@@ -173,21 +180,23 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 
 		// recurse to embedded fields unless they are explicitly skipped via
 		// the check above: embed:"" or embed:"-"
+		frv := s.Field(i)
 		if field.Anonymous {
-			v.validateFields(p, z.Field(i), errs)
+			v.validate(p, frv, errs)
 			continue
 		}
 
-		var val interface{}
-		if x := z.Field(i); x.CanInterface() {
-			val = x.Interface()
-		} else {
-			panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", p, field))
-		}
 		switch src {
 		case "check":
-			valid = v.validate(path, val, errs) && valid
+			valid = v.validate(path, frv, errs) && valid
 		default:
+			var val interface{}
+			if frv.CanInterface() {
+				val = frv.Interface()
+			} else {
+				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", p, field))
+			}
+
 			var expr *epl.Program
 			if cache != nil {
 				if v, ok := cache.Get(src); ok {
@@ -207,7 +216,7 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 			}
 
 			check := func(s interface{}) bool {
-				return v.validate(path, s, errs)
+				return v.validate(path, frv, errs)
 			}
 			date := func(y, m, d float64) time.Time {
 				return time.Date(int(y), time.Month(m), int(d), 0, 0, 0, 0, time.UTC)
@@ -220,8 +229,8 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 				"check": check,
 				"str":   stdlib.Strings{},
 			}
-			if z.CanInterface() {
-				cxt["sup"] = z.Interface()
+			if s.CanInterface() {
+				cxt["sup"] = s.Interface()
 			}
 
 			res, err := expr.Exec(cxt)

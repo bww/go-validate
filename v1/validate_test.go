@@ -160,7 +160,9 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testO{F1: "1"}, []string{"syn", "o_1"}, []string{"This is the problem", "Wrong length"})
 
 	checkValid(t, v, testP{}, []string{"a_1"}, nil)
+	checkValid(t, v, testP{testA{"Hello"}}, nil, nil)
 	checkValid(t, v, testQ{}, nil, nil)
+	checkValid(t, v, testQ{testA{"Hello"}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

@@ -3,17 +3,41 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bww/epl/v1"
 	"github.com/bww/go-validate/v1/stdlib"
+	"github.com/hashicorp/golang-lru"
 )
 
-var (
-	ErrUnsupportedType = fmt.Errorf("Unsupported type (use a struct)")
-)
+var ErrUnsupportedType = fmt.Errorf("Unsupported type (use a struct)")
+
+var cache *lru.Cache
+
+func init() {
+	size := 1024 // default cache size
+	if v := os.Getenv("GO_VALIDATE_EXPR_CACHE_SIZE"); v != "" {
+		var err error
+		size, err = strconv.Atoi(v)
+		if err != nil {
+			panic(fmt.Errorf("validate: Expression cache is not an integer: %v", err))
+		}
+		if size < 0 {
+			panic(fmt.Errorf("validate: Expression cache size makes no sense: %d", size))
+		}
+	}
+	if size > 0 {
+		var err error
+		cache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		if err != nil {
+			panic(fmt.Errorf("validate: Could not create cache: %v", err))
+		}
+	}
+}
 
 type errorBuffer struct {
 	E []error
@@ -164,11 +188,22 @@ func (v Validator) validateStruct(p string, z reflect.Value, errs *errorBuffer) 
 		case "check":
 			valid = v.validate(path, val, errs) && valid
 		default:
-			expr, err := epl.Compile(src)
-			if err != nil {
-				errs.Add(FieldErrorf(path, "Could not compile expression: %v", err))
-				valid = false
-				continue
+			var expr *epl.Program
+			if cache != nil {
+				if v, ok := cache.Get(src); ok {
+					expr = v.(*epl.Program)
+				}
+			}
+
+			if expr == nil {
+				var err error
+				expr, err = epl.Compile(src)
+				if err != nil {
+					panic(fmt.Errorf("Could not compile expression: %v", err))
+				}
+				if cache != nil {
+					cache.Add(src, expr)
+				}
 			}
 
 			check := func(s interface{}) bool {

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/golang-lru"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -194,4 +195,36 @@ func TestMode(t *testing.T) {
 	assert.Equal(t, []string{}, errs.Fields())
 	errs = New(Mode("create,update")).Validate(v1)
 	assert.Equal(t, []string{}, errs.Fields())
+}
+
+func BenchmarkValidateWithCache(b *testing.B) {
+	cache, _ = lru.New(256)
+	v := New()
+	for i := 0; i < b.N; i++ {
+		v.Validate(testA{})
+		v.Validate(testA{"A"})
+
+		v.Validate(testB{})
+		v.Validate(testB{&testA{}})
+		v.Validate(testB{&testA{"A"}})
+
+		v.Validate(testC{0, 0, 0, 0, 1})
+		v.Validate(testC{1, -1, 0, 1, 1})
+	}
+}
+
+func BenchmarkValidateWithoutCache(b *testing.B) {
+	cache = nil
+	v := New()
+	for i := 0; i < b.N; i++ {
+		v.Validate(testA{})
+		v.Validate(testA{"A"})
+
+		v.Validate(testB{})
+		v.Validate(testB{&testA{}})
+		v.Validate(testB{&testA{"A"}})
+
+		v.Validate(testC{0, 0, 0, 0, 1})
+		v.Validate(testC{1, -1, 0, 1, 1})
+	}
 }

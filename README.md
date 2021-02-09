@@ -22,6 +22,28 @@ func example(e Second) {
 }
 ```
 
+## Additional Validation
+You can perform additional type-level validation by implementing one of two supported interfaces. New code should perfer `IntrospectorV2`.
+
+```go
+type IntrospectorV1 interface {
+  // Perform custom validation of the receiver and suppress any
+  // checks that are defined on individual fields.
+  Validate() error
+}
+
+type IntrospectorV2 interface {
+  // Perform custom validation of the receiver and then perform
+  // checks that are defined on individual fields if the second
+  // return value is true.
+  Validate(Validator) (error, bool)
+}
+```
+
+When validating a type that conforms to either of these interfaces, Go Validate will invoke the `Validate` method first, before checking individual fields.
+
+If the type implements `IntrospectorV2` and `Validate` returns `true` for the second return value, Go Validate will continue on to validate individual fields. If `false` is returned or if the type implements `IntrospectorV1` instead, the individual fields will not be automatically validated.
+
 ## Supported Tags
 Struct tags are used to control how Go Validate does its validation. The following tags are supported, and their names can be changed if you like.
 
@@ -32,7 +54,7 @@ Struct tags are used to control how Go Validate does its validation. The followi
 | `json` | The name of the field. |
 
 
-You may change the name of these tags by either using `NewWithConfig` or providing config options to `New`.
+You may change the name of these tags by either using `NewWithConfig` or providing config options to `New` (see below).
 
 ## Using Modes
 Often, when you are validating input, the definition of "valid" is different based on the mode you're in: create, update, or maybe something else. Go Validate addresses this by allowing you to set the name of the `check` tag so that you can validate differently depending on your mode. For example:
@@ -44,12 +66,12 @@ type First struct {
 }
 
 func create(v First) {
-  errs := validate.New(validate.Mode("create")).Validate(e)
+  errs := validate.New(validate.Mode("create")).Validate(v)
   // ...
 }
 
 func update(v First) {
-  errs := validate.New(validate.Mode("update")).Validate(e)
+  errs := validate.New(validate.Mode("update")).Validate(v)
   // ...
 }
 ```

@@ -138,7 +138,7 @@ func (v Validator) validateIntrospectorV2(p string, s reflect.Value, errs *error
 		valid = true
 	}
 	if r[1].Bool() {
-		return v.validateFields(p, s, errs)
+		return v.validateFields(p, s, errs) && valid
 	} else {
 		return valid
 	}

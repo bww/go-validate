@@ -13,6 +13,10 @@ type testA struct {
 	F1 string `json:"a_1" check:"len(self) > 0"`
 }
 
+func (_ testA) Validate(_ Validator) (error, bool) { // v2
+	return nil, true
+}
+
 type testB struct {
 	F1 *testA `json:"b_1" check:"self != nil && check(self)"`
 }
@@ -112,7 +116,7 @@ func (s TestR) Validate(v Validator) (error, bool) { // v2
 	if s.F1 <= 0 {
 		return FieldErrorf("syn", "This is the problem"), true
 	} else {
-		return nil, true
+		return Errors{}, true
 	}
 }
 

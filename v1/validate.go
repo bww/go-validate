@@ -227,8 +227,8 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				}
 			}
 
-			check := func(s interface{}) bool {
-				return v.validate(path, reflect.ValueOf(s), errs)
+			check := func(x interface{}) bool {
+				return v.validate(path, reflect.ValueOf(x), errs)
 			}
 			date := func(y, m, d float64) time.Time {
 				return time.Date(int(y), time.Month(m), int(d), 0, 0, 0, 0, time.UTC)
@@ -256,9 +256,15 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				switch c := res.(type) {
 				case nil: // no error
 				case error:
-					errs.Add(c)
+					if c != nil {
+						errs.Add(c)
+						valid = false
+					}
 				case []error:
-					errs.Add(c...)
+					if len(c) > 0 {
+						errs.Add(c...)
+						valid = false
+					}
 				case bool:
 					if !c {
 						if e.Message != "" {

@@ -122,8 +122,8 @@ func (v Validator) validate(p string, s reflect.Value, errs *errorBuffer) bool {
 
 func (v Validator) validateIntrospectorV1(p string, s reflect.Value, errs *errorBuffer) bool {
 	r := s.MethodByName("Validate").Call([]reflect.Value{})
-	if !r[0].IsNil() {
-		errs.Add(fieldErrors(p, r[0].Interface().(error))...)
+	if err := unwrapError(r[0]); err != nil {
+		errs.Add(fieldErrors(p, err)...)
 		return false
 	}
 	return true
@@ -132,8 +132,8 @@ func (v Validator) validateIntrospectorV1(p string, s reflect.Value, errs *error
 func (v Validator) validateIntrospectorV2(p string, s reflect.Value, errs *errorBuffer) bool {
 	var valid bool
 	r := s.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(v)})
-	if !r[0].IsNil() {
-		errs.Add(fieldErrors(p, r[0].Interface().(error))...)
+	if err := unwrapError(r[0]); err != nil {
+		errs.Add(fieldErrors(p, err)...)
 	} else {
 		valid = true
 	}
@@ -295,6 +295,23 @@ func (v Validator) len(s interface{}) int {
 	default:
 		panic(fmt.Errorf("Type does not have a length: %T", s))
 	}
+}
+
+func unwrapError(val reflect.Value) error {
+	if val.IsNil() {
+		return nil
+	}
+	switch v := val.Interface().(type) {
+	case []error:
+		if len(v) > 0 {
+			return Errors(v)
+		} else {
+			return nil
+		}
+	case error:
+		return v
+	}
+	return fmt.Errorf("Expected an error; got %v: %v", val.Type(), val.Interface())
 }
 
 func fieldErrors(p string, err error) []error {

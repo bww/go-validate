@@ -308,6 +308,12 @@ func unwrapError(val reflect.Value) error {
 		} else {
 			return nil
 		}
+	case Errors:
+		if len(v) > 0 {
+			return v
+		} else {
+			return nil
+		}
 	case error:
 		return v
 	}

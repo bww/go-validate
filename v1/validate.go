@@ -6,7 +6,6 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bww/epl/v1"
@@ -14,25 +13,38 @@ import (
 	"github.com/hashicorp/golang-lru"
 )
 
-var cache *lru.Cache
+var (
+	exprCache *lru.Cache
+	typeCache *lru.Cache
+)
 
-func init() {
-	size := 1024 // default cache size
-	if v := os.Getenv("GO_VALIDATE_EXPR_CACHE_SIZE"); v != "" {
+func sizeFromEnv(n string, d int) int {
+	if v := os.Getenv(n); v != "" {
 		var err error
-		size, err = strconv.Atoi(v)
+		d, err = strconv.Atoi(v)
 		if err != nil {
-			panic(fmt.Errorf("validate: Expression cache is not an integer: %v", err))
+			panic(fmt.Errorf("validate: Cache size is not an integer: %q, %v", n, err))
 		}
-		if size < 0 {
-			panic(fmt.Errorf("validate: Expression cache size makes no sense: %d", size))
+		if d < 0 {
+			panic(fmt.Errorf("validate: Cache size makes no sense: %d", d))
 		}
 	}
-	if size > 0 {
+	return d
+}
+
+func init() {
+	if size := sizeFromEnv("GO_VALIDATE_EXPR_CACHE_SIZE", 512); size > 0 {
 		var err error
-		cache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		exprCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
 		if err != nil {
-			panic(fmt.Errorf("validate: Could not create cache: %v", err))
+			panic(fmt.Errorf("validate: Could not create expression cache: %v", err))
+		}
+	}
+	if size := sizeFromEnv("GO_VALIDATE_TYPE_CACHE_SIZE", 512); size > 0 {
+		var err error
+		typeCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		if err != nil {
+			panic(fmt.Errorf("validate: Could not create type cache: %v", err))
 		}
 	}
 }
@@ -91,11 +103,12 @@ func NewWithConfig(conf Config) Validator {
 
 func (v Validator) Validate(s interface{}) Errors {
 	errs := &errorBuffer{}
-	v.validate("", reflect.Indirect(reflect.ValueOf(s)), errs)
+	v.validate("", reflect.ValueOf(s), errs)
 	return errs.E
 }
 
 func (v Validator) validate(p string, s reflect.Value, errs *errorBuffer) bool {
+	s = reflect.Indirect(s)
 	t := s.Type()
 	switch {
 	case t.Implements(introspectorV2):
@@ -140,7 +153,7 @@ func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) 
 	case reflect.Slice, reflect.Array:
 		return v.validateSlice(p, s, errs)
 	default:
-		errs.Add(fmt.Errorf("Unsupported type: %v", s))
+		errs.Add(fmt.Errorf("Unsupported type: %v", s.Type()))
 	}
 	return false
 }
@@ -156,67 +169,65 @@ func (v Validator) validateSlice(p string, s reflect.Value, errs *errorBuffer) b
 }
 
 func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) bool {
-	n := s.NumField()
-	t := s.Type()
+	typ := s.Type()
+	tkey := newTypeKey(typ, v)
+
+	var vt *validatedType
+	if typeCache != nil {
+		if v, ok := typeCache.Get(tkey); ok {
+			vt = v.(*validatedType)
+		}
+	}
+	if vt == nil {
+		vt = newType(typ, v)
+		if typeCache != nil {
+			typeCache.Add(tkey, vt)
+		}
+	}
 
 	valid := true
-	for i := 0; i < n; i++ {
-		field := t.Field(i)
-
-		var path string
-		if name := field.Tag.Get(v.nameTag); name != "" {
-			path = keyPath(p, fieldName(name))
-		} else {
-			path = keyPath(p, field.Name)
-		}
-
-		msg := strings.TrimSpace(field.Tag.Get(v.errTag))
-		src := strings.TrimSpace(getTag(field.Tag, v.checkTag))
-		if src == "-" {
-			continue
-		} else if src == "" && !field.Anonymous {
-			continue
-		}
+	for _, e := range vt.Fields {
+		f := s.Field(e.Index)
+		path := keyPath(p, e.Name)
 
 		// recurse to embedded fields unless they are explicitly skipped via
 		// the check above: embed:"" or embed:"-"
-		frv := s.Field(i)
-		if field.Anonymous {
-			v.validate(p, frv, errs)
+		if e.Field.Anonymous {
+			valid = v.validate(path, f, errs) && valid
 			continue
 		}
 
-		switch src {
+		switch e.Expr {
 		case "check":
-			valid = v.validate(path, frv, errs) && valid
+			valid = v.validate(path, f, errs) && valid
 		default:
 			var val interface{}
-			if frv.CanInterface() {
-				val = frv.Interface()
+			if f.CanInterface() {
+				val = f.Interface()
 			} else {
-				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", p, field))
+				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", e.Name, e.Field))
 			}
 
 			var expr *epl.Program
-			if cache != nil {
-				if v, ok := cache.Get(src); ok {
+			if exprCache != nil {
+				if v, ok := exprCache.Get(e.Expr); ok {
 					expr = v.(*epl.Program)
 				}
 			}
 
 			if expr == nil {
 				var err error
-				expr, err = epl.Compile(src)
+				expr, err = epl.Compile(e.Expr)
 				if err != nil {
 					panic(fmt.Errorf("Could not compile expression: %v", err))
 				}
-				if cache != nil {
-					cache.Add(src, expr)
+				if exprCache != nil {
+					exprCache.Add(e.Expr, expr)
 				}
 			}
 
 			check := func(s interface{}) bool {
-				return v.validate(path, frv, errs)
+				return v.validate(path, reflect.ValueOf(s), errs)
 			}
 			date := func(y, m, d float64) time.Time {
 				return time.Date(int(y), time.Month(m), int(d), 0, 0, 0, 0, time.UTC)
@@ -249,10 +260,10 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 					errs.Add(c...)
 				case bool:
 					if !c {
-						if msg != "" {
-							errs.Add(FieldError{path, msg})
+						if e.Message != "" {
+							errs.Add(FieldError{path, e.Message})
 						} else {
-							errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", src))
+							errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", e.Expr))
 						}
 						valid = false
 					}
@@ -300,12 +311,4 @@ func coalesce(t ...string) string {
 		}
 	}
 	return ""
-}
-
-func fieldName(t string) string {
-	if x := strings.Index(t, ","); x > 0 {
-		return t[:x]
-	} else {
-		return t
-	}
 }

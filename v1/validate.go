@@ -193,7 +193,10 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 		// recurse to embedded fields unless they are explicitly skipped via
 		// the check above: embed:"" or embed:"-"
 		if e.Field.Anonymous {
-			valid = v.validate(path, f, errs) && valid
+			// we don't allow introspection on embedded fields, this has already been
+			// done on the containing struct since it inherits embedded methods and
+			// therefore embedded interface conformance
+			valid = v.validateFields(path, f, errs) && valid
 			continue
 		}
 

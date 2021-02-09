@@ -179,8 +179,8 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testQ{}, nil, nil)
 	checkValid(t, v, testQ{testA{"Hello"}}, nil, nil)
 
-	// checkValid(t, v, testS{}, []string{"syn"}, []string{"This is the problem"})
-	// checkValid(t, v, testS{TestR{1}}, nil, nil)
+	checkValid(t, v, testS{}, []string{"syn"}, []string{"This is the problem"})
+	checkValid(t, v, testS{TestR{1}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

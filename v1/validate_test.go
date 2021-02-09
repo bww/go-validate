@@ -104,6 +104,20 @@ type testQ struct {
 	testA `check:"-"`
 }
 
+type TestR struct {
+	F1 int
+}
+
+func (s TestR) Validate(v Validator) (error, bool) { // v2
+	if s.F1 <= 0 {
+		return FieldErrorf("syn", "This is the problem"), true
+	} else {
+		return nil, true
+	}
+}
+
+type testS struct{ TestR }
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -164,6 +178,9 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testP{testA{"Hello"}}, nil, nil)
 	checkValid(t, v, testQ{}, nil, nil)
 	checkValid(t, v, testQ{testA{"Hello"}}, nil, nil)
+
+	checkValid(t, v, testS{}, []string{"syn"}, []string{"This is the problem"})
+	checkValid(t, v, testS{TestR{1}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {
@@ -198,7 +215,8 @@ func TestMode(t *testing.T) {
 }
 
 func BenchmarkValidateWithCache(b *testing.B) {
-	cache, _ = lru.New(256)
+	exprCache, _ = lru.New(512)
+	typeCache, _ = lru.New(512)
 	v := New()
 	for i := 0; i < b.N; i++ {
 		v.Validate(testA{})
@@ -214,7 +232,8 @@ func BenchmarkValidateWithCache(b *testing.B) {
 }
 
 func BenchmarkValidateWithoutCache(b *testing.B) {
-	cache = nil
+	exprCache = nil
+	typeCache = nil
 	v := New()
 	for i := 0; i < b.N; i++ {
 		v.Validate(testA{})

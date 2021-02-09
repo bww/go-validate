@@ -122,6 +122,10 @@ func (s TestR) Validate(v Validator) (error, bool) { // v2
 
 type testS struct{ TestR }
 
+type testT struct {
+	*TestR `check:"self != nil"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -185,6 +189,8 @@ func TestValidate(t *testing.T) {
 
 	checkValid(t, v, testS{}, []string{"syn"}, []string{"This is the problem"})
 	checkValid(t, v, testS{TestR{1}}, nil, nil)
+
+	// checkValid(t, v, testT{}, []string{"TestR"}, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

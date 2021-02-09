@@ -190,10 +190,11 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 		f := s.Field(e.Index)
 		path := keyPath(p, e.Name)
 
-		// recurse to embedded fields unless they are explicitly skipped via
-		// the check above: embed:"" or embed:"-"
-		if e.Field.Anonymous {
-			// we don't allow introspection on embedded fields, this has already been
+		// Recurse to embedded fields unless they are explicitly skipped via
+		// the check above: check:"-". If the expression is not empty, we just
+		// apply the expression.
+		if e.Field.Anonymous && e.Expr == "" {
+			// We don't allow introspection on embedded fields, this has already been
 			// done on the containing struct since it inherits embedded methods and
 			// therefore embedded interface conformance
 			valid = v.validateFields(path, f, errs) && valid
@@ -202,7 +203,11 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 
 		switch e.Expr {
 		case "check":
-			valid = v.validate(path, f, errs) && valid
+			if e.Field.Anonymous {
+				valid = v.validateFields(path, f, errs) && valid
+			} else {
+				valid = v.validate(path, f, errs) && valid
+			}
 		default:
 			if !f.CanInterface() {
 				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", e.Name, e.Field))

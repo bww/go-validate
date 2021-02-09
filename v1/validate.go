@@ -204,12 +204,10 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 		case "check":
 			valid = v.validate(path, f, errs) && valid
 		default:
-			var val interface{}
-			if f.CanInterface() {
-				val = f.Interface()
-			} else {
+			if !f.CanInterface() {
 				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", e.Name, e.Field))
 			}
+			val := f.Interface()
 
 			var expr *epl.Program
 			if exprCache != nil {

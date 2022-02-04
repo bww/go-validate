@@ -122,6 +122,15 @@ func (s TestR) Validate(v Validator) (error, bool) { // v2
 
 type testS struct{ TestR }
 
+type testT struct {
+	testA
+	R TestR
+}
+
+func (s testT) Validate(v Validator) (error, bool) {
+	return s.R.Validate(v)
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -185,6 +194,11 @@ func TestValidate(t *testing.T) {
 
 	checkValid(t, v, testS{}, []string{"syn"}, []string{"This is the problem"})
 	checkValid(t, v, testS{TestR{1}}, nil, nil)
+
+	checkValid(t, v, testT{testA{}, TestR{1}}, []string{"a_1"}, nil)
+	checkValid(t, v, testT{testA{}, TestR{0}}, []string{"syn", "a_1"}, nil)
+	checkValid(t, v, testT{testA{"Hello"}, TestR{0}}, []string{"syn"}, nil)
+	checkValid(t, v, testT{testA{"Hello"}, TestR{1}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

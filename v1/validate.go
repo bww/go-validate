@@ -268,7 +268,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				case bool:
 					if !c {
 						if e.Message != "" {
-							errs.Add(FieldError{path, e.Message})
+							errs.Add(&FieldError{Field: path, Message: e.Message})
 						} else {
 							errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", e.Expr))
 						}
@@ -330,7 +330,7 @@ func fieldErrors(p string, err error) []error {
 		return []error{fielderr}
 	}
 	return []error{
-		FieldErrorf(coalesce(p, "<entity>"), err.Error()),
+		newFieldError(coalesce(p, "<entity>"), err),
 	}
 }
 

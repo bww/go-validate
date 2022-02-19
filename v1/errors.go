@@ -7,10 +7,19 @@ import (
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+	Cause   error  `json:"-"`
+}
+
+func newFieldError(f string, err error) *FieldError {
+	return &FieldError{f, err.Error(), err}
 }
 
 func FieldErrorf(f, m string, a ...interface{}) *FieldError {
-	return &FieldError{f, fmt.Sprintf(m, a...)}
+	return &FieldError{f, fmt.Sprintf(m, a...), nil}
+}
+
+func (e FieldError) Unwrap() error {
+	return e.Cause
 }
 
 func (e FieldError) Error() string {

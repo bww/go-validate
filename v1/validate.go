@@ -106,13 +106,13 @@ func (c Context) WithIndex(v int) Context {
 }
 
 // FieldError creates a new field error from this context and the provided
-// error
+// error.
 func (c Context) FieldError(err error) *FieldError {
 	return newFieldError(c.Path, err)
 }
 
 // FieldErrorf creates a new field error from this context and the provided
-// error message
+// error message.
 func (c Context) FieldErrorf(m string, a ...interface{}) *FieldError {
 	return FieldErrorf(c.Path, m, a...)
 }

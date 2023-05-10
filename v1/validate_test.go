@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,7 +38,7 @@ type testE struct {
 }
 
 type testF struct {
-	F1 []testA `json:"f_1" check:"len(self) > 0 && check(self)"`
+	F1 testU `json:"f_1" check:"len(self) > 0 && check(self)"`
 }
 
 type testG struct {
@@ -131,6 +131,8 @@ func (s testT) Validate(v Validator) (error, bool) {
 	return s.R.Validate(v)
 }
 
+type testU []testA
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -199,6 +201,9 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testT{testA{}, TestR{0}}, []string{"syn", "a_1"}, nil)
 	checkValid(t, v, testT{testA{"Hello"}, TestR{0}}, []string{"syn"}, nil)
 	checkValid(t, v, testT{testA{"Hello"}, TestR{1}}, nil, nil)
+
+	checkValid(t, v, testU{testA{}}, []string{"[0].a_1"}, nil)
+	checkValid(t, v, testU{testA{"A"}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

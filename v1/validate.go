@@ -10,12 +10,14 @@ import (
 
 	"github.com/bww/epl/v1"
 	"github.com/bww/go-validate/v1/stdlib"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
+const dfltCache = 1024
+
 var (
-	exprCache *lru.Cache
-	typeCache *lru.Cache
+	exprCache *lru.Cache[string, *epl.Program]
+	typeCache *lru.Cache[typeKey, *validatedType]
 )
 
 func sizeFromEnv(n string, d int) int {
@@ -33,16 +35,16 @@ func sizeFromEnv(n string, d int) int {
 }
 
 func init() {
-	if size := sizeFromEnv("GO_VALIDATE_EXPR_CACHE_SIZE", 512); size > 0 {
+	if size := sizeFromEnv("GO_VALIDATE_EXPR_CACHE_SIZE", dfltCache); size > 0 {
 		var err error
-		exprCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		exprCache, err = lru.New[string, *epl.Program](size) // in practice this cannot fail because we've checked that size > 0
 		if err != nil {
 			panic(fmt.Errorf("validate: Could not create expression cache: %v", err))
 		}
 	}
-	if size := sizeFromEnv("GO_VALIDATE_TYPE_CACHE_SIZE", 512); size > 0 {
+	if size := sizeFromEnv("GO_VALIDATE_TYPE_CACHE_SIZE", dfltCache); size > 0 {
 		var err error
-		typeCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		typeCache, err = lru.New[typeKey, *validatedType](size) // in practice this cannot fail because we've checked that size > 0
 		if err != nil {
 			panic(fmt.Errorf("validate: Could not create type cache: %v", err))
 		}
@@ -107,19 +109,16 @@ var (
 )
 
 type Validator struct {
-	checkTag, errTag, nameTag string
+	checkTag, errTag, nameTag, basePath string
 }
 
 func New(opts ...Option) Validator {
-	conf := Config{
+	return NewWithConfig(Config{
 		CheckTag: "check",
 		ErrorTag: "invalid",
 		FieldTag: "json",
-	}
-	for _, opt := range opts {
-		conf = opt(conf)
-	}
-	return NewWithConfig(conf)
+		BasePath: "",
+	}.WithOptions(opts))
 }
 
 func NewWithConfig(conf Config) Validator {
@@ -127,12 +126,22 @@ func NewWithConfig(conf Config) Validator {
 		checkTag: conf.CheckTag,
 		errTag:   conf.ErrorTag,
 		nameTag:  conf.FieldTag,
+		basePath: conf.BasePath,
 	}
+}
+
+func (v Validator) WithOptions(opts ...Option) Validator {
+	return NewWithConfig(Config{
+		CheckTag: v.checkTag,
+		ErrorTag: v.errTag,
+		FieldTag: v.nameTag,
+		BasePath: v.basePath,
+	}.WithOptions(opts))
 }
 
 func (v Validator) Validate(s interface{}) Errors {
 	errs := &errorBuffer{}
-	v.validate("", reflect.ValueOf(s), errs)
+	v.validate(v.basePath, reflect.ValueOf(s), errs)
 	return errs.E
 }
 
@@ -195,6 +204,8 @@ func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) 
 	switch s.Kind() {
 	case reflect.Invalid:
 		return true
+	case reflect.Interface, reflect.Pointer:
+		return v.validateFields(p, s.Elem(), errs)
 	case reflect.Struct:
 		return v.validateStruct(p, s, errs)
 	case reflect.Slice, reflect.Array:
@@ -222,7 +233,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 	var vt *validatedType
 	if typeCache != nil {
 		if v, ok := typeCache.Get(tkey); ok {
-			vt = v.(*validatedType)
+			vt = v
 		}
 	}
 	if vt == nil {
@@ -259,7 +270,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 			var expr *epl.Program
 			if exprCache != nil {
 				if v, ok := exprCache.Get(e.Expr); ok {
-					expr = v.(*epl.Program)
+					expr = v
 				}
 			}
 

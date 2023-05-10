@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/bww/epl/v1"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -253,8 +254,8 @@ func TestMode(t *testing.T) {
 }
 
 func BenchmarkValidateWithCache(b *testing.B) {
-	exprCache, _ = lru.New(512)
-	typeCache, _ = lru.New(512)
+	exprCache, _ = lru.New[string, *epl.Program](dfltCache)
+	typeCache, _ = lru.New[typeKey, *validatedType](dfltCache)
 	v := New()
 	for i := 0; i < b.N; i++ {
 		v.Validate(testA{})

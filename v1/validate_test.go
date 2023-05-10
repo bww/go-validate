@@ -133,6 +133,18 @@ func (s testT) Validate(v Validator) (error, bool) {
 
 type testU []testA
 
+type testV struct {
+	F1 int
+}
+
+func (s testV) Validate(v Validator, c Context) (error, bool) { // v3
+	if s.F1 > 10 {
+		return c.FieldErrorf("Too big!"), false
+	} else {
+		return nil, true
+	}
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -204,6 +216,9 @@ func TestValidate(t *testing.T) {
 
 	checkValid(t, v, testU{testA{}}, []string{"[0].a_1"}, nil)
 	checkValid(t, v, testU{testA{"A"}}, nil, nil)
+
+	checkValid(t, v, testV{11}, []string{""}, nil)
+	checkValid(t, v, testV{1}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/bww/epl/v1"
 	"github.com/bww/go-validate/v1/stdlib"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru"
 )
 
 var (
@@ -65,16 +65,45 @@ func keyPath(b, f string) string {
 	}
 }
 
+func indexPath(f string, n int) string {
+	return fmt.Sprintf("%s[%d]", f, n)
+}
+
+type Context struct {
+	Path string
+}
+
+func (c Context) WithPath(p string) Context {
+	return Context{Path: p}
+}
+func (c Context) WithField(f string) Context {
+	return Context{Path: keyPath(c.Path, f)}
+}
+func (c Context) WithIndex(v int) Context {
+	return Context{Path: indexPath(c.Path, v)}
+}
+
+func (c Context) FieldError(err error) *FieldError {
+	return newFieldError(c.Path, err)
+}
+func (c Context) FieldErrorf(m string, a ...interface{}) *FieldError {
+	return FieldErrorf(c.Path, m, a...)
+}
+
 type IntrospectorV1 interface {
 	Validate() error
 }
 type IntrospectorV2 interface {
 	Validate(Validator) (error, bool)
 }
+type IntrospectorV3 interface {
+	Validate(Validator, Context) (error, bool)
+}
 
 var (
 	introspectorV1 = reflect.TypeOf((*IntrospectorV1)(nil)).Elem()
 	introspectorV2 = reflect.TypeOf((*IntrospectorV2)(nil)).Elem()
+	introspectorV3 = reflect.TypeOf((*IntrospectorV3)(nil)).Elem()
 )
 
 type Validator struct {
@@ -111,6 +140,8 @@ func (v Validator) validate(p string, s reflect.Value, errs *errorBuffer) bool {
 	s = reflect.Indirect(s)
 	t := s.Type()
 	switch {
+	case t.Implements(introspectorV3):
+		return v.validateIntrospectorV3(p, s, errs)
 	case t.Implements(introspectorV2):
 		return v.validateIntrospectorV2(p, s, errs)
 	case t.Implements(introspectorV1):
@@ -132,6 +163,22 @@ func (v Validator) validateIntrospectorV1(p string, s reflect.Value, errs *error
 func (v Validator) validateIntrospectorV2(p string, s reflect.Value, errs *errorBuffer) bool {
 	var valid bool
 	r := s.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(v)})
+	if err := unwrapError(r[0]); err != nil {
+		errs.Add(fieldErrors(p, err)...)
+	} else {
+		valid = true
+	}
+	if r[1].Bool() {
+		return v.validateFields(p, s, errs) && valid
+	} else {
+		return valid
+	}
+}
+
+func (v Validator) validateIntrospectorV3(p string, s reflect.Value, errs *errorBuffer) bool {
+	var valid bool
+	c := Context{Path: p}
+	r := s.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(v), reflect.ValueOf(c)})
 	if err := unwrapError(r[0]); err != nil {
 		errs.Add(fieldErrors(p, err)...)
 	} else {

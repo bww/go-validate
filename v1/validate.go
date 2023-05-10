@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bww/epl/v1"
@@ -71,33 +72,63 @@ func indexPath(f string, n int) string {
 	return fmt.Sprintf("%s[%d]", f, n)
 }
 
+func optsPath(b string, f []string) string {
+	return keyPath(b, fmt.Sprintf("{%s}", strings.Join(f, ",")))
+}
+
 type Context struct {
 	Path string
 }
 
+// WithPath returns a new context based on the receiver with the Path
+// field replaced by the provided value.
 func (c Context) WithPath(p string) Context {
 	return Context{Path: p}
 }
+
+// WithField returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided field appended.
 func (c Context) WithField(f string) Context {
 	return Context{Path: keyPath(c.Path, f)}
 }
+
+// WithFields returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided fields appended.
+func (c Context) WithFields(f ...string) Context {
+	return Context{Path: optsPath(c.Path, f)}
+}
+
+// WithField returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided index subscript
+// appended.
 func (c Context) WithIndex(v int) Context {
 	return Context{Path: indexPath(c.Path, v)}
 }
 
+// FieldError creates a new field error from this context and the provided
+// error
 func (c Context) FieldError(err error) *FieldError {
 	return newFieldError(c.Path, err)
 }
+
+// FieldErrorf creates a new field error from this context and the provided
+// error message
 func (c Context) FieldErrorf(m string, a ...interface{}) *FieldError {
 	return FieldErrorf(c.Path, m, a...)
 }
 
+// IntrospectorV1 is a deprecated interface for validating types.
 type IntrospectorV1 interface {
 	Validate() error
 }
+
+// IntrospectorV2 is a deprecated interface for validating types.
 type IntrospectorV2 interface {
 	Validate(Validator) (error, bool)
 }
+
+// IntrospectorV3 can be implemented by a type to perform arbitrary
+// custom validation.
 type IntrospectorV3 interface {
 	Validate(Validator, Context) (error, bool)
 }

@@ -258,7 +258,7 @@ func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) 
 		reflect.Complex64, reflect.Complex128,
 		reflect.String:
 		return true
-	default: // anything is cannot be validated, to varying degress of concern
+	default: // anything else cannot be validated, to varying degress of concern
 		if strict {
 			panic(fmt.Errorf("Unsupported type: %v", s.Type())) // this is a configuration error in strict mode
 		}

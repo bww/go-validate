@@ -72,7 +72,7 @@ func indexPath(f string, n int) string {
 	return fmt.Sprintf("%s[%d]", f, n)
 }
 
-func optsPath(b string, f []string) string {
+func altsPath(b string, f []string) string {
 	return keyPath(b, fmt.Sprintf("{%s}", strings.Join(f, ",")))
 }
 
@@ -92,10 +92,11 @@ func (c Context) WithField(f string) Context {
 	return Context{Path: keyPath(c.Path, f)}
 }
 
-// WithFields returns a new context based on the receiver with the Path
-// field replaced by the current path with the provided fields appended.
-func (c Context) WithFields(f ...string) Context {
-	return Context{Path: optsPath(c.Path, f)}
+// WithFieldAlts returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided fields alternates
+// appended.
+func (c Context) WithFieldAlternates(f ...string) Context {
+	return Context{Path: altsPath(c.Path, f)}
 }
 
 // WithField returns a new context based on the receiver with the Path

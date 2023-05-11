@@ -140,7 +140,7 @@ type testV struct {
 
 func (s testV) Validate(v Validator, c Context) (error, bool) { // v3
 	if s.F1 > 10 {
-		return c.FieldErrorf("Too big!"), false
+		return c.WithFieldAlternates("f1", "first").FieldErrorf("Too big!"), false
 	} else {
 		return nil, true
 	}
@@ -218,7 +218,7 @@ func TestValidate(t *testing.T) {
 	checkValid(t, v, testU{testA{}}, []string{"[0].a_1"}, nil)
 	checkValid(t, v, testU{testA{"A"}}, nil, nil)
 
-	checkValid(t, v, testV{11}, []string{""}, nil)
+	checkValid(t, v, testV{11}, []string{"{f1,first}"}, nil)
 	checkValid(t, v, testV{1}, nil, nil)
 }
 

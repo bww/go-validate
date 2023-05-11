@@ -21,6 +21,11 @@ var (
 	typeCache *lru.Cache[typeKey, *validatedType]
 )
 
+var (
+	debug  = os.Getenv("VALIDATE_DEBUG") != ""
+	strict = os.Getenv("VALIDATE_STRICT") != ""
+)
+
 func sizeFromEnv(n string, d int) int {
 	if v := os.Getenv(n); v != "" {
 		var err error
@@ -54,6 +59,10 @@ func init() {
 
 type errorBuffer struct {
 	E []error
+}
+
+func (e *errorBuffer) Len() int {
+	return len(e.E)
 }
 
 func (e *errorBuffer) Add(v ...error) {
@@ -234,18 +243,28 @@ func (v Validator) validateIntrospectorV3(p string, s reflect.Value, errs *error
 
 func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) bool {
 	switch s.Kind() {
-	case reflect.Invalid:
-		return true
 	case reflect.Interface, reflect.Pointer:
 		return v.validateFields(p, s.Elem(), errs)
 	case reflect.Struct:
 		return v.validateStruct(p, s, errs)
 	case reflect.Slice, reflect.Array:
 		return v.validateSlice(p, s, errs)
-	default:
-		errs.Add(fmt.Errorf("Unsupported type: %v", s.Type()))
+	case // primitive is always valid when it's not a field, except through introspection
+		reflect.Invalid,
+		reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128,
+		reflect.String:
+		return true
+	default: // anything is cannot be validated, to varying degress of concern
+		if strict {
+			panic(fmt.Errorf("Unsupported type: %v", s.Type())) // this is a configuration error in strict mode
+		}
+		fmt.Printf("validate: [%s] ignoring unsupported type: %s\n", p, s.Type().Name())
+		return true // we don't support this type, so just ignore it
 	}
-	return false
 }
 
 func (v Validator) validateSlice(p string, s reflect.Value, errs *errorBuffer) bool {
@@ -310,7 +329,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				var err error
 				expr, err = epl.Compile(e.Expr)
 				if err != nil {
-					panic(fmt.Errorf("Could not compile expression: %v", err))
+					panic(fmt.Errorf("Could not compile expression: %v", err)) // this is a configuration error
 				}
 				if exprCache != nil {
 					exprCache.Add(e.Expr, expr)
@@ -332,14 +351,14 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				"str":   stdlib.Strings{},
 			}
 			if s.CanInterface() {
-				cxt["sup"] = s.Interface()
+				v := s.Interface()
+				cxt["super"] = v
+				cxt["sup"] = v
 			}
 
 			res, err := expr.Exec(cxt)
 			if err != nil {
-				errs.Add(FieldErrorf(path, "Could not evaluate expression: %v", err))
-				valid = false
-				continue
+				panic(fmt.Errorf("Could not evaluate expression: %v", err)) // this is a configuration error
 			}
 
 			if res != nil {
@@ -347,25 +366,33 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				case nil: // no error
 				case error:
 					if c != nil {
-						errs.Add(c)
+						if !e.Noerr {
+							errs.Add(c)
+						}
 						valid = false
 					}
 				case []error:
 					if len(c) > 0 {
-						errs.Add(c...)
+						if !e.Noerr {
+							errs.Add(c...)
+						}
 						valid = false
 					}
 				case bool:
 					if !c {
-						if e.Message != "" {
-							errs.Add(&FieldError{Field: path, Message: e.Message})
-						} else {
-							errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", e.Expr))
+						if !e.Noerr {
+							if e.Message != "" {
+								errs.Add(&FieldError{Field: path, Message: e.Message})
+							} else {
+								errs.Add(FieldErrorf(path, "Constraint not satisfied: %s", e.Expr))
+							}
 						}
 						valid = false
 					}
 				default:
-					errs.Add(FieldErrorf(path, "Invalid expression result: %T (expected %T) in %v", res, []error{}, res))
+					if !e.Noerr {
+						errs.Add(FieldErrorf(path, "Invalid expression result: %T (expected %T) in %v", res, []error{}, res))
+					}
 					valid = false
 				}
 			}

@@ -34,7 +34,7 @@ func (v Strings) AlphaNumeric(s string) bool {
 func (v Strings) Match(p, s string) bool {
 	m, err := regexp.Match(p, []byte(s))
 	if err != nil {
-		panic(fmt.Errorf("Invalid pattern: %s", p))
+		panic(fmt.Errorf("validate: Invalid pattern: %s", p))
 	}
 	return m
 }

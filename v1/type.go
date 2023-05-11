@@ -24,6 +24,7 @@ func newTypeKey(t reflect.Type, v Validator) typeKey {
 type validatedField struct {
 	Name    string
 	Message string
+	Noerr   bool // skip error output; this error is reported by a sub-validation
 	Expr    string
 	Index   int
 	Field   reflect.StructField
@@ -48,7 +49,12 @@ func newType(t reflect.Type, v Validator) *validatedType {
 			name = x.Name
 		}
 
+		var noerr bool
 		msg := strings.TrimSpace(x.Tag.Get(v.errTag))
+		if msg == "-" {
+			noerr = true
+		}
+
 		src := strings.TrimSpace(getTag(x.Tag, v.checkTag))
 		if src == "-" {
 			continue
@@ -59,6 +65,7 @@ func newType(t reflect.Type, v Validator) *validatedType {
 		f = append(f, validatedField{
 			Name:    name,
 			Message: msg,
+			Noerr:   noerr,
 			Expr:    src,
 			Index:   i,
 			Field:   x,

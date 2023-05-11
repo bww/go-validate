@@ -260,7 +260,7 @@ func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) 
 		return true
 	default: // anything else cannot be validated, to varying degress of concern
 		if strict {
-			panic(fmt.Errorf("Unsupported type: %v", s.Type())) // this is a configuration error in strict mode
+			panic(fmt.Errorf("validate: Unsupported type: %v", s.Type())) // this is a configuration error in strict mode
 		}
 		fmt.Printf("validate: [%s] ignoring unsupported type: %s\n", p, s.Type().Name())
 		return true // we don't support this type, so just ignore it
@@ -314,7 +314,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 			valid = v.validate(path, f, errs) && valid
 		default:
 			if !f.CanInterface() {
-				panic(fmt.Errorf("Cannot validate unexported field: [%s] %v", e.Name, e.Field))
+				panic(fmt.Errorf("validate: Cannot validate unexported field: [%s] %v", e.Name, e.Field))
 			}
 			val := f.Interface()
 
@@ -329,7 +329,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 				var err error
 				expr, err = epl.Compile(e.Expr)
 				if err != nil {
-					panic(fmt.Errorf("Could not compile expression: %v", err)) // this is a configuration error
+					panic(fmt.Errorf("validate: Could not compile expression: %v", err)) // this is a configuration error
 				}
 				if exprCache != nil {
 					exprCache.Add(e.Expr, expr)
@@ -358,7 +358,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 
 			res, err := expr.Exec(cxt)
 			if err != nil {
-				panic(fmt.Errorf("Could not evaluate expression: %v", err)) // this is a configuration error
+				panic(fmt.Errorf("validate: Could not evaluate expression: %v", err)) // this is a configuration error
 			}
 
 			if res != nil {
@@ -410,7 +410,7 @@ func (v Validator) len(s interface{}) int {
 	case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
 		return z.Len()
 	default:
-		panic(fmt.Errorf("Type does not have a length: %T", s))
+		panic(fmt.Errorf("validate: Type does not have a length: %T", s))
 	}
 }
 

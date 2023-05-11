@@ -6,16 +6,19 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bww/epl/v1"
 	"github.com/bww/go-validate/v1/stdlib"
-	"github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
+const dfltCache = 1024
+
 var (
-	exprCache *lru.Cache
-	typeCache *lru.Cache
+	exprCache *lru.Cache[string, *epl.Program]
+	typeCache *lru.Cache[typeKey, *validatedType]
 )
 
 func sizeFromEnv(n string, d int) int {
@@ -33,16 +36,16 @@ func sizeFromEnv(n string, d int) int {
 }
 
 func init() {
-	if size := sizeFromEnv("GO_VALIDATE_EXPR_CACHE_SIZE", 512); size > 0 {
+	if size := sizeFromEnv("GO_VALIDATE_EXPR_CACHE_SIZE", dfltCache); size > 0 {
 		var err error
-		exprCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		exprCache, err = lru.New[string, *epl.Program](size) // in practice this cannot fail because we've checked that size > 0
 		if err != nil {
 			panic(fmt.Errorf("validate: Could not create expression cache: %v", err))
 		}
 	}
-	if size := sizeFromEnv("GO_VALIDATE_TYPE_CACHE_SIZE", 512); size > 0 {
+	if size := sizeFromEnv("GO_VALIDATE_TYPE_CACHE_SIZE", dfltCache); size > 0 {
 		var err error
-		typeCache, err = lru.New(size) // in practice this cannot fail because we've checked that size > 0
+		typeCache, err = lru.New[typeKey, *validatedType](size) // in practice this cannot fail because we've checked that size > 0
 		if err != nil {
 			panic(fmt.Errorf("validate: Could not create type cache: %v", err))
 		}
@@ -65,32 +68,89 @@ func keyPath(b, f string) string {
 	}
 }
 
+func indexPath(f string, n int) string {
+	return fmt.Sprintf("%s[%d]", f, n)
+}
+
+func altsPath(b string, f []string) string {
+	return keyPath(b, fmt.Sprintf("{%s}", strings.Join(f, ",")))
+}
+
+type Context struct {
+	Path string
+}
+
+// WithPath returns a new context based on the receiver with the Path
+// field replaced by the provided value.
+func (c Context) WithPath(p string) Context {
+	return Context{Path: p}
+}
+
+// WithField returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided field appended.
+func (c Context) WithField(f string) Context {
+	return Context{Path: keyPath(c.Path, f)}
+}
+
+// WithFieldAlts returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided fields alternates
+// appended.
+func (c Context) WithFieldAlternates(f ...string) Context {
+	return Context{Path: altsPath(c.Path, f)}
+}
+
+// WithField returns a new context based on the receiver with the Path
+// field replaced by the current path with the provided index subscript
+// appended.
+func (c Context) WithIndex(v int) Context {
+	return Context{Path: indexPath(c.Path, v)}
+}
+
+// FieldError creates a new field error from this context and the provided
+// error.
+func (c Context) FieldError(err error) *FieldError {
+	return newFieldError(c.Path, err)
+}
+
+// FieldErrorf creates a new field error from this context and the provided
+// error message.
+func (c Context) FieldErrorf(m string, a ...interface{}) *FieldError {
+	return FieldErrorf(c.Path, m, a...)
+}
+
+// IntrospectorV1 is a deprecated interface for validating types.
 type IntrospectorV1 interface {
 	Validate() error
 }
+
+// IntrospectorV2 is a deprecated interface for validating types.
 type IntrospectorV2 interface {
 	Validate(Validator) (error, bool)
+}
+
+// IntrospectorV3 can be implemented by a type to perform arbitrary
+// custom validation.
+type IntrospectorV3 interface {
+	Validate(Validator, Context) (error, bool)
 }
 
 var (
 	introspectorV1 = reflect.TypeOf((*IntrospectorV1)(nil)).Elem()
 	introspectorV2 = reflect.TypeOf((*IntrospectorV2)(nil)).Elem()
+	introspectorV3 = reflect.TypeOf((*IntrospectorV3)(nil)).Elem()
 )
 
 type Validator struct {
-	checkTag, errTag, nameTag string
+	checkTag, errTag, nameTag, basePath string
 }
 
 func New(opts ...Option) Validator {
-	conf := Config{
+	return NewWithConfig(Config{
 		CheckTag: "check",
 		ErrorTag: "invalid",
 		FieldTag: "json",
-	}
-	for _, opt := range opts {
-		conf = opt(conf)
-	}
-	return NewWithConfig(conf)
+		BasePath: "",
+	}.WithOptions(opts))
 }
 
 func NewWithConfig(conf Config) Validator {
@@ -98,12 +158,22 @@ func NewWithConfig(conf Config) Validator {
 		checkTag: conf.CheckTag,
 		errTag:   conf.ErrorTag,
 		nameTag:  conf.FieldTag,
+		basePath: conf.BasePath,
 	}
+}
+
+func (v Validator) WithOptions(opts ...Option) Validator {
+	return NewWithConfig(Config{
+		CheckTag: v.checkTag,
+		ErrorTag: v.errTag,
+		FieldTag: v.nameTag,
+		BasePath: v.basePath,
+	}.WithOptions(opts))
 }
 
 func (v Validator) Validate(s interface{}) Errors {
 	errs := &errorBuffer{}
-	v.validate("", reflect.ValueOf(s), errs)
+	v.validate(v.basePath, reflect.ValueOf(s), errs)
 	return errs.E
 }
 
@@ -111,6 +181,8 @@ func (v Validator) validate(p string, s reflect.Value, errs *errorBuffer) bool {
 	s = reflect.Indirect(s)
 	t := s.Type()
 	switch {
+	case t.Implements(introspectorV3):
+		return v.validateIntrospectorV3(p, s, errs)
 	case t.Implements(introspectorV2):
 		return v.validateIntrospectorV2(p, s, errs)
 	case t.Implements(introspectorV1):
@@ -144,10 +216,28 @@ func (v Validator) validateIntrospectorV2(p string, s reflect.Value, errs *error
 	}
 }
 
+func (v Validator) validateIntrospectorV3(p string, s reflect.Value, errs *errorBuffer) bool {
+	var valid bool
+	c := Context{Path: p}
+	r := s.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(v), reflect.ValueOf(c)})
+	if err := unwrapError(r[0]); err != nil {
+		errs.Add(fieldErrors(p, err)...)
+	} else {
+		valid = true
+	}
+	if r[1].Bool() {
+		return v.validateFields(p, s, errs) && valid
+	} else {
+		return valid
+	}
+}
+
 func (v Validator) validateFields(p string, s reflect.Value, errs *errorBuffer) bool {
 	switch s.Kind() {
 	case reflect.Invalid:
 		return true
+	case reflect.Interface, reflect.Pointer:
+		return v.validateFields(p, s.Elem(), errs)
 	case reflect.Struct:
 		return v.validateStruct(p, s, errs)
 	case reflect.Slice, reflect.Array:
@@ -175,7 +265,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 	var vt *validatedType
 	if typeCache != nil {
 		if v, ok := typeCache.Get(tkey); ok {
-			vt = v.(*validatedType)
+			vt = v
 		}
 	}
 	if vt == nil {
@@ -212,7 +302,7 @@ func (v Validator) validateStruct(p string, s reflect.Value, errs *errorBuffer) 
 			var expr *epl.Program
 			if exprCache != nil {
 				if v, ok := exprCache.Get(e.Expr); ok {
-					expr = v.(*epl.Program)
+					expr = v
 				}
 			}
 

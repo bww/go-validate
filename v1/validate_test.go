@@ -156,6 +156,10 @@ func (s testW) Validate(v Validator, c Context) (error, bool) { // v3
 	}
 }
 
+type testX struct {
+	F1 testA `json:"a" check:"check(self)" invalid:"-"`
+}
+
 func TestValidate(t *testing.T) {
 	v := New()
 
@@ -233,6 +237,9 @@ func TestValidate(t *testing.T) {
 
 	checkValid(t, v, testW(11), []string{"_"}, nil)
 	checkValid(t, v, testW(1), nil, nil)
+
+	checkValid(t, v, testX{testA{}}, []string{"a.a_1"}, nil) // only reports sub-error; outer error suppressed
+	checkValid(t, v, testX{testA{F1: "111"}}, nil, nil)
 }
 
 func checkValid(t *testing.T, v Validator, e interface{}, expect []string, errmsg []string) {

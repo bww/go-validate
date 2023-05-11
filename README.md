@@ -38,11 +38,18 @@ type IntrospectorV2 interface {
   // return value is true.
   Validate(Validator) (error, bool)
 }
+
+type IntrospectorV3 interface {
+  // Perform custom validation of the receiver and then perform
+  // checks that are defined on individual fields if the second
+  // return value is true.
+  Validate(Validator, Context) (error, bool)
+}
 ```
 
 When validating a type that conforms to either of these interfaces, Go Validate will invoke the `Validate` method first, before checking individual fields.
 
-If the type implements `IntrospectorV2` and `Validate` returns `true` for the second return value, Go Validate will continue on to validate individual fields. If `false` is returned or if the type implements `IntrospectorV1` instead, the individual fields will not be automatically validated.
+If the type implements `IntrospectorV2` or `IntrospectorV3` and `Validate` returns `true` for the second return value, Go Validate will continue on to validate individual fields. If `false` is returned or if the type implements `IntrospectorV1` instead, the individual fields will not be automatically validated.
 
 ## Supported Tags
 Struct tags are used to control how Go Validate does its validation. The following tags are supported, and their names can be changed if you like.
@@ -50,9 +57,8 @@ Struct tags are used to control how Go Validate does its validation. The followi
 | Tag | Description |
 |-----|-------------|
 | `check` | The expression that will be evaluated. It is common to use different tag names for different "modes". See below. |
-| `invalid` | The error message that should be used when `check` fails. You may omit this if you don't mind a generic message. |
-| `json` | The name of the field. |
-
+| `invalid` | The error message that should be used when `check` fails. You may omit this if you don't mind a generic message and you may specify `-` if you want no error to be reported when validation fails. This can be used when a sub-type is expected to generate all the errors required. |
+| `json` | The name of the field, which will be referenced in errors. |
 
 You may change the name of these tags by either using `NewWithConfig` or providing config options to `New` (see below).
 

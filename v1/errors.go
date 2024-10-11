@@ -54,6 +54,12 @@ func (e Errors) Messages() []string {
 	return msgs
 }
 
+// Errors unwraps to itself, the slice of errors that it represents. This
+// case is unusual, but it is handled by [errors.Unwrap] and friends.
+func (e Errors) Unwrap() []error {
+	return []error(e)
+}
+
 func (e Errors) Error() string {
 	s := fmt.Sprintf("%d field errors", len(e))
 	for _, x := range e {

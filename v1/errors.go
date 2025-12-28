@@ -3,6 +3,8 @@ package validate
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/bww/go-util/v1/ext"
 )
 
 type FieldError struct {
@@ -72,5 +74,11 @@ func (e Errors) Error() string {
 // MarshalJSON is implemented to indicate that the error can be marshaled
 // to a reasonable JSON value.
 func (e Errors) MarshalJSON() ([]byte, error) {
-	return json.Marshal(e)
+	return json.Marshal(struct {
+		Error string  `json:"error"`
+		Cause []error `json:"fields"`
+	}{
+		Error: fmt.Sprintf("%d field %s", len(e), ext.Choose(len(e) == 1, "error", "errors")),
+		Cause: []error(e),
+	})
 }

@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"encoding/json"
 	"fmt"
 )
 
@@ -66,4 +67,10 @@ func (e Errors) Error() string {
 		s += "\n  - " + x.Error()
 	}
 	return s
+}
+
+// MarshalJSON is implemented to indicate that the error can be marshaled
+// to a reasonable JSON value.
+func (e Errors) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e)
 }
